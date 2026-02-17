@@ -1,0 +1,16 @@
+# Default libraries (common to all GC/Wii games)
+# These are loaded first, then version-specific config/GAMEID/libs.toml adds to them
+
+[[lib]]
+name = "Runtime.PPCEABI.H"
+mw_version = "GC/1.3.2"
+cflags_preset = "runtime"
+progress_category = "sdk"
+
+[[lib.object]]
+name = "Runtime.PPCEABI.H/global_destructor_chain.c"
+completed = false
+
+[[lib.object]]
+name = "Runtime.PPCEABI.H/__init_cpp_exceptions.cpp"
+completed = false

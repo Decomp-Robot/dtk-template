@@ -1,0 +1,12 @@
+# Game-specific library definitions for GAMEID
+# These are added to the default libs from config/libs.toml
+
+[[lib]]
+name = "Game"
+mw_version = "GC/1.3.2"
+cflags_preset = "base"
+progress_category = "game"
+
+[[lib.object]]
+name = "main.c"
+completed = false

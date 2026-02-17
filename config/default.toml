@@ -1,0 +1,119 @@
+# Default configuration for decompilation projects
+# This file provides base settings shared across all game versions
+
+[project]
+# Default game version (used when -v is not specified)
+# Available versions are auto-detected from config/{VERSION}/ directories
+default_version = "GAMEID"
+
+[tools]
+# Tool versions (git tags) - leave empty to use custom paths
+binutils_tag = "2.42-1"
+compilers_tag = "20251118"
+dtk_tag = "v1.8.0"
+objdiff_tag = "v3.5.1"
+sjiswrap_tag = "v1.2.2"
+wibo_tag = "1.0.0"
+
+[build]
+linker_version = "GC/1.3.2"
+# $VERSION and $VERSION_NUM are replaced at runtime
+
+# Assembler flags
+asflags = [
+    "-mgekko",
+    "--strip-local-absolute",
+    "-I include",
+    "-I build/$VERSION/include",
+    "--defsym BUILD_VERSION=$VERSION_NUM",
+]
+
+# Base C flags (applied to all objects)
+cflags_base = [
+    "-nodefaults",
+    "-proc gekko",
+    "-align powerpc",
+    "-enum int",
+    "-fp hardware",
+    "-Cpp_exceptions off",
+    "-O4,p",
+    "-inline auto",
+    "-pragma cats off",
+    "-pragma warn_notinlined off",
+    "-maxerrors 1",
+    "-nosyspath",
+    "-RTTI off",
+    "-fp_contract on",
+    "-str reuse",
+    "-multibyte",
+    "-i include",
+    "-i build/$VERSION/include",
+    "-DBUILD_VERSION=$VERSION_NUM",
+    "-DVERSION_$VERSION",
+]
+
+# Debug flags (appended when --debug is used)
+cflags_debug = [
+    "-sym on",
+    "-DDEBUG=1",
+]
+
+# Release flags (appended when not --debug)
+cflags_release = [
+    "-DNDEBUG=1",
+]
+
+# Warning flags - set by --warn argument
+cflags_warn_all = [
+    "-W all",
+]
+
+cflags_warn_off = [
+    "-W off",
+]
+
+cflags_warn_error = [
+    "-W error",
+]
+
+# Runtime/library C flags (inherits cflags_base + cflags_runtime)
+cflags_runtime = [
+    "-use_lmw_stmw on",
+    "-str reuse,pool,readonly",
+    "-gccinc",
+    "-common off",
+    "-inline auto",
+]
+
+# REL module C flags (inherits cflags_base + cflags_rel)
+cflags_rel = [
+    "-sdata 0",
+    "-sdata2 0",
+]
+
+# Linker flags
+ldflags = [
+    "-fp hardware",
+    "-nodefaults",
+]
+
+# Linker debug flags (appended when --debug is used)
+ldflags_debug = [
+    "-g",
+]
+
+# Linker map flags (appended when --map is used)
+ldflags_map = [
+    "-mapunused",
+]
+
+# Progress categories
+[progress.categories]
+game = "Game Code"
+sdk = "SDK Code"
+
+# Optional extra arguments to `objdiff-cli report generate`
+# Marks relocations as mismatching if the target value is different
+# Default is "functionRelocDiffs=none", which is most lenient
+# Example: "--config functionRelocDiffs=data_value"
+progress_report_args = []

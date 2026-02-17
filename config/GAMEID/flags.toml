@@ -1,0 +1,8 @@
+# Optional flag overrides for GAMEID
+# Uncomment and modify as needed
+
+# [cflags_extra]
+# - = "-DEXTRA_DEFINE"
+
+# [ldflags_extra]
+# - = "-extra_ldflag"
