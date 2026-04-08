@@ -5,6 +5,12 @@ This file contains file splits for a module.
 Example:
 
 ```yaml
+Sections:
+	.text       type:code align:32
+	.ctors      type:rodata align:32
+	.data       type:data align:32
+	.bss        type:bss align:32
+
 path/to/file.cpp:
 	.text       start:0x80047E5C end:0x8004875C
 	.ctors      start:0x803A54C4 end:0x803A54C8
@@ -13,7 +19,20 @@ path/to/file.cpp:
 	.bss        start:0x8040D4AC end:0x8040D4D8 common
 ```
 
-## Format
+## Header
+
+```yaml
+Sections:
+    section     [section attributes]
+```
+
+### Attributes
+
+- `type:` The section type. `code`, `data`, `rodata` or `bss`.
+- `align:` The section alignment in bytes.
+- `vaddr:` (REL only) The fixed virtual address of the section. When set, split and symbol addresses are written as absolute addresses.
+
+## Files
 
 ```yaml
 path/to/file.cpp: [file attributes]
