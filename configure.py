@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
+"""
+Configuration loader for decompilation projects.
+Loads settings from TOML config files.
 
-###
-# Generates build files for the project.
-# This file also includes the project configuration,
-# such as compiler flags and the object matching status.
-#
-# Usage:
-#   python3 configure.py
-#   ninja
-#
-# Append --help to see available options.
-###
+Usage:
+    python3 configure.py
+    ninja
+
+Append --help to see available options.
+"""
 
 import argparse
 import sys
+import tomllib
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from tools.config_loader import load_config
 from tools.project import (
     Object,
     ProgressCategory,
@@ -26,12 +26,34 @@ from tools.project import (
     is_windows,
 )
 
-# Game versions
-DEFAULT_VERSION = 0
-VERSIONS = [
-    "GAMEID",  # 0
-]
 
+def get_available_versions(config_dir: Path) -> List[str]:
+    """Scan config directory for available game versions."""
+    versions = []
+    if not config_dir.exists():
+        return versions
+    for entry in config_dir.iterdir():
+        if entry.is_dir() and (entry / "config.yml").exists():
+            versions.append(entry.name)
+    return sorted(versions)
+
+
+def get_default_version(config_dir: Path) -> Optional[str]:
+    """Load default version from config/default.toml."""
+    default_path = config_dir / "default.toml"
+    if default_path.exists():
+        with open(default_path, "rb") as f:
+            data = tomllib.load(f)
+            return data.get("project", {}).get("default_version")
+    return None
+
+
+# Discover available versions from config directory
+CONFIG_DIR = Path("config")
+AVAILABLE_VERSIONS = get_available_versions(CONFIG_DIR)
+DEFAULT_VERSION = get_default_version(CONFIG_DIR) or (AVAILABLE_VERSIONS[0] if AVAILABLE_VERSIONS else "GAMEID")
+
+# Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "mode",
@@ -43,10 +65,10 @@ parser.add_argument(
 parser.add_argument(
     "-v",
     "--version",
-    choices=VERSIONS,
     type=str.upper,
-    default=VERSIONS[DEFAULT_VERSION],
-    help="version to build",
+    choices=AVAILABLE_VERSIONS if AVAILABLE_VERSIONS else None,
+    default=None,
+    help="version to build" + (f" (available: {', '.join(AVAILABLE_VERSIONS)})" if AVAILABLE_VERSIONS else ""),
 )
 parser.add_argument(
     "--build-dir",
@@ -134,207 +156,159 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-config = ProjectConfig()
-config.version = str(args.version)
-version_num = VERSIONS.index(config.version)
+# Determine version
+version = args.version or DEFAULT_VERSION
 
-# Apply arguments
-config.build_dir = args.build_dir
-config.dtk_path = args.dtk
-config.objdiff_path = args.objdiff
+# Load configuration from TOML
+toml_config = load_config(version, Path("config"))
+
+# Create project config
+config = ProjectConfig()
+
+# Apply tool versions from config
+config.binutils_tag = toml_config.tools.binutils_tag
+config.compilers_tag = toml_config.tools.compilers_tag
+config.dtk_tag = toml_config.tools.dtk_tag
+config.objdiff_tag = toml_config.tools.objdiff_tag
+config.sjiswrap_tag = toml_config.tools.sjiswrap_tag
+config.wibo_tag = toml_config.tools.wibo_tag
+
+# Apply custom tool paths from args
 config.binutils_path = args.binutils
 config.compilers_path = args.compilers
-config.generate_map = args.map
-config.non_matching = args.non_matching
+config.dtk_path = args.dtk
+config.objdiff_path = args.objdiff
 config.sjiswrap_path = args.sjiswrap
 config.ninja_path = args.ninja
+
+# Version
+config.version = version
+version_num = 0  # TODO: load from version config if needed
+
+# Build settings
+config.build_dir = args.build_dir
+config.generate_map = args.map
+config.non_matching = args.non_matching
 config.progress = args.progress
 if not is_windows():
     config.wrapper = args.wrapper
+
 # Don't build asm unless we're --non-matching
 if not config.non_matching:
     config.asm_dir = None
 
-# Tool versions
-config.binutils_tag = "2.42-2"
-config.compilers_tag = "20251118"
-config.dtk_tag = "v1.8.3"
-config.objdiff_tag = "v3.6.1"
-config.sjiswrap_tag = "v1.2.2"
-config.wibo_tag = "1.0.3"
+# Project paths
+config.config_path = Path("config") / version / "config.yml"
+config.check_sha_path = Path("config") / version / "build.sha1"
 
-# Project
-config.config_path = Path("config") / config.version / "config.yml"
-config.check_sha_path = Path("config") / config.version / "build.sha1"
-config.asflags = [
-    "-mgekko",
-    "--strip-local-absolute",
-    "-I include",
-    f"-I build/{config.version}/include",
-    f"--defsym BUILD_VERSION={version_num}",
-]
-config.ldflags = [
-    "-fp hardware",
-    "-nodefaults",
-]
-if args.debug:
-    config.ldflags.append("-g")  # Or -gdwarf-2 for Wii linkers
-if args.map:
-    config.ldflags.append("-mapunused")
-    # config.ldflags.append("-listclosure") # For Wii linkers
-
-# Use for any additional files that should cause a re-configure when modified
+# Reconfig deps
 config.reconfig_deps = []
 
-# Optional numeric ID for decomp.me preset
-# Can be overridden in libraries or objects
+# Scratch preset
 config.scratch_preset_id = None
 
-# Base flags, common to most GC/Wii games.
-# Generally leave untouched, with overrides added below.
-cflags_base = [
-    "-nodefaults",
-    "-proc gekko",
-    "-align powerpc",
-    "-enum int",
-    "-fp hardware",
-    "-Cpp_exceptions off",
-    "-O4,p",
-    "-inline auto",
-    '-pragma "cats off"',
-    '-pragma "warn_notinlined off"',
-    "-maxerrors 1",
-    "-nosyspath",
-    "-RTTI off",
-    "-fp_contract on",
-    "-str reuse",
-    "-multibyte",  # For Wii compilers, replace with `-enc SJIS`
-    "-i include",
-    f"-i build/{config.version}/include",
-    f"-DBUILD_VERSION={version_num}",
-    f"-DVERSION_{config.version}",
-]
+# Build flags - substitute $VERSION and $VERSION_NUM
+version_str = version
+version_num_str = str(version_num)
 
-# Debug flags
+def subst(flags: List[str]) -> List[str]:
+    return [f.replace("$VERSION", version_str).replace("$VERSION_NUM", version_num_str) for f in flags]
+
+# Get base cflags from config
+cflags_base = list(toml_config.build.cflags_base)
+
+# Add debug/release flags
 if args.debug:
-    # Or -sym dwarf-2 for Wii compilers
-    cflags_base.extend(["-sym on", "-DDEBUG=1"])
+    cflags_base.extend(toml_config.build.cflags_debug)
 else:
-    cflags_base.append("-DNDEBUG=1")
+    cflags_base.extend(toml_config.build.cflags_release)
 
-# Warning flags
+# Add warning flags
 if args.warn == "all":
-    cflags_base.append("-W all")
+    cflags_base.extend(toml_config.build.cflags_warn_all)
 elif args.warn == "off":
-    cflags_base.append("-W off")
+    cflags_base.extend(toml_config.build.cflags_warn_off)
 elif args.warn == "error":
-    cflags_base.append("-W error")
+    cflags_base.extend(toml_config.build.cflags_warn_error)
 
-# Metrowerks library flags
-cflags_runtime = [
-    *cflags_base,
-    "-use_lmw_stmw on",
-    "-str reuse,pool,readonly",
-    "-gccinc",
-    "-common off",
-    "-inline auto",
-]
+config.asflags = subst(toml_config.build.asflags)
+config.ldflags = subst(toml_config.build.ldflags)
+if args.debug:
+    config.ldflags.extend(toml_config.build.ldflags_debug)
+if args.map:
+    config.ldflags.extend(toml_config.build.ldflags_map)
 
-# REL flags
-cflags_rel = [
-    *cflags_base,
-    "-sdata 0",
-    "-sdata2 0",
-]
+# Get cflags for runtime and REL
+cflags_runtime = cflags_base + toml_config.build.cflags_runtime
+cflags_rel = cflags_base + toml_config.build.cflags_rel
 
-config.linker_version = "GC/1.3.2"
+config.linker_version = toml_config.build.linker_version
 
+# Build library config for project.py
+# Map LibraryDef to dict format expected by project.py
+config.libs = []
+for lib in toml_config.libs:
+    # Get appropriate cflags based on preset
+    if lib.cflags_preset == "runtime":
+        lib_cflags = cflags_runtime
+    elif lib.cflags_preset == "rel":
+        lib_cflags = cflags_rel
+    else:
+        lib_cflags = cflags_base + lib.cflags_extra
 
-# Helper function for Dolphin libraries
-def DolphinLib(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
-    return {
-        "lib": lib_name,
-        "mw_version": "GC/1.2.5n",
-        "cflags": cflags_base,
-        "progress_category": "sdk",
-        "objects": objects,
+    # Filter objects based on version and handle "equivalent" status
+    objects = []
+    for obj in lib.objects:
+        # Skip objects that don't apply to this version
+        if obj.versions is not None and version not in obj.versions:
+            continue
+
+        # Determine if object should be linked:
+        # - completed = True: always link (Matching)
+        # - equivalent = True: link only with --non-matching
+        # - otherwise: don't link (NonMatching)
+        if obj.completed:
+            obj_completed = True
+        elif obj.equivalent and args.non_matching:
+            obj_completed = True  # Link with --non-matching
+        else:
+            obj_completed = False
+
+        objects.append(Object(obj_completed, obj.name))
+
+    lib_config: Dict[str, Any] = {
+        "lib": lib.name,
+        "mw_version": lib.mw_version,
+        "cflags": lib_cflags,
+        "progress_category": lib.progress_category or "game",
+        "objects": objects
     }
+    config.libs.append(lib_config)
 
-
-# Helper function for REL script objects
-def Rel(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
-    return {
-        "lib": lib_name,
-        "mw_version": "GC/1.3.2",
-        "cflags": cflags_rel,
-        "progress_category": "game",
-        "objects": objects,
-    }
-
-
-Matching = True                   # Object matches and should be linked
-NonMatching = False               # Object does not match and should not be linked
-Equivalent = config.non_matching  # Object should be linked when configured with --non-matching
-
-
-# Object is only matching for specific versions
-def MatchingFor(*versions):
-    return config.version in versions
-
-
-config.warn_missing_config = True
-config.warn_missing_source = False
-config.libs = [
-    {
-        "lib": "Runtime.PPCEABI.H",
-        "mw_version": config.linker_version,
-        "cflags": cflags_runtime,
-        "progress_category": "sdk",  # str | List[str]
-        "objects": [
-            Object(NonMatching, "Runtime.PPCEABI.H/global_destructor_chain.c"),
-            Object(NonMatching, "Runtime.PPCEABI.H/__init_cpp_exceptions.cpp"),
-        ],
-    },
-]
-
-
-# Optional callback to adjust link order. This can be used to add, remove, or reorder objects.
-# This is called once per module, with the module ID and the current link order.
-#
-# For example, this adds "dummy.c" to the end of the DOL link order if configured with --non-matching.
-# "dummy.c" *must* be configured as a Matching (or Equivalent) object in order to be linked.
-def link_order_callback(module_id: int, objects: List[str]) -> List[str]:
-    # Don't modify the link order for matching builds
-    if not config.non_matching:
-        return objects
-    if module_id == 0:  # DOL
-        return objects + ["dummy.c"]
-    return objects
-
-
-# Uncomment to enable the link order callback.
-# config.link_order_callback = link_order_callback
-
-
-# Optional extra categories for progress tracking
-# Adjust as desired for your project
+# Progress categories
 config.progress_categories = [
-    ProgressCategory("game", "Game Code"),
-    ProgressCategory("sdk", "SDK Code"),
+    ProgressCategory(k, v)
+    for k, v in toml_config.progress_categories.items()
 ]
 config.progress_each_module = args.verbose
-# Optional extra arguments to `objdiff-cli report generate`
-config.progress_report_args = [
-    # Marks relocations as mismatching if the target value is different
-    # Default is "functionRelocDiffs=none", which is most lenient
-    # "--config functionRelocDiffs=data_value",
-]
+config.progress_report_args = toml_config.progress_report_args
+config.warn_missing_config = True
+config.warn_missing_source = False
 
+# Optional callback (keep for backward compat)
+# Uncomment and modify as needed
+# def link_order_callback(module_id: int, objects: List[str]) -> List[str]:
+#     if not config.non_matching:
+#         return objects
+#     if module_id == 0:  # DOL
+#         return objects + ["dummy.c"]
+#     return objects
+# config.link_order_callback = link_order_callback
+
+# Run in requested mode
 if args.mode == "configure":
-    # Write build.ninja and objdiff.json
     generate_build(config)
 elif args.mode == "progress":
-    # Print progress information
     calculate_progress(config)
 else:
     sys.exit("Unknown mode: " + args.mode)

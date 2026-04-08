@@ -1,5 +1,7 @@
 # Getting Started
 
+> **Requirements:** Python 3.11+ (required for `tomllib` stdlib)
+
 See [Dependencies](dependencies.md) first.
 
 1. [Create a new repository from this template](https://github.com/new?template_name=dtk-template&template_owner=encounter), then clone it.
@@ -22,7 +24,7 @@ See [Dependencies](dependencies.md) first.
 
 6. Modify the paths in `config/[GAMEID]/build.sha1` to point to the `build` directory instead of `orig`. The DOL will be built at `build/[GAMEID]/main.dol`, and modules will be built at `build/[GAMEID]/[module_name]/[module_name].rel`.
 
-7. Update `VERSIONS` in [`configure.py`](/configure.py) with the game ID.
+7. Update [`config/default.toml`](/config/default.toml) with tool versions if needed. Library and object definitions go in [`config/{VERSION}/libs.toml`](/config/GAMEID/libs.toml).
 
 8. Run `python configure.py` to generate the initial `build.ninja`.
 
