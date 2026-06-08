@@ -76,13 +76,18 @@ class ObjectDef:
     equivalent: bool = False
     versions: Optional[List[str]] = None
     # Additional options (mirrors Object options in project.py)
+    add_to_all: Optional[bool] = None
     cflags: Optional[List[str]] = None
     asflags: Optional[List[str]] = None
     mw_version: Optional[str] = None
     progress_category: Optional[str] = None
     scratch_preset_id: Optional[int] = None
     shift_jis: Optional[bool] = None
+    source: Optional[str] = None
     src_dir: Optional[str] = None
+    extra_cflags: Optional[List[str]] = None
+    extra_asflags: Optional[List[str]] = None
+    extra_clang_flags: Optional[List[str]] = None
 
 
 @dataclass

@@ -5,6 +5,9 @@
 # Default game version (used when -v is not specified)
 # Available versions are auto-detected from config/{VERSION}/ directories
 default_version = "GAMEID"
+# Numeric version identifier (used for $VERSION_NUM substitution in flags)
+# Override per-version in config/{VERSION}/default.toml
+version_num = 0
 
 [tools]
 # Tool versions (git tags) - leave empty to use custom paths
@@ -38,8 +41,8 @@ cflags_base = [
     "-Cpp_exceptions off",
     "-O4,p",
     "-inline auto",
-    "-pragma cats off",
-    "-pragma warn_notinlined off",
+    "-pragma \"cats off\"",
+    "-pragma \"warn_notinlined off\"",
     "-maxerrors 1",
     "-nosyspath",
     "-RTTI off",
