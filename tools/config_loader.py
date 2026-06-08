@@ -24,6 +24,7 @@ class MergedConfig:
     libs: List[LibraryDef] = field(default_factory=list)
     progress_categories: Dict[str, str] = field(default_factory=dict)
     progress_report_args: List[str] = field(default_factory=list)
+    version_num: int = 0
 
 
 class ConfigLoader:
@@ -142,13 +143,18 @@ class ConfigLoader:
                         completed=obj_data.get("completed", False),
                         equivalent=obj_data.get("equivalent", False),
                         versions=obj_data.get("versions"),
+                        add_to_all=obj_data.get("add_to_all"),
                         cflags=obj_data.get("cflags"),
                         asflags=obj_data.get("asflags"),
                         mw_version=obj_data.get("mw_version"),
                         progress_category=obj_data.get("progress_category"),
                         scratch_preset_id=obj_data.get("scratch_preset_id"),
                         shift_jis=obj_data.get("shift_jis"),
+                        source=obj_data.get("source"),
                         src_dir=obj_data.get("src_dir"),
+                        extra_cflags=obj_data.get("extra_cflags"),
+                        extra_asflags=obj_data.get("extra_asflags"),
+                        extra_clang_flags=obj_data.get("extra_clang_flags"),
                     )
                 )
 
@@ -200,12 +206,17 @@ class ConfigLoader:
         progress_data = data.get("progress", {})
         progress_report_args = progress_data.get("progress_report_args", [])
 
+        # Parse version_num from [project] section
+        project_data = data.get("project", {})
+        version_num = project_data.get("version_num", 0)
+
         return MergedConfig(
             tools=self.parse_tool_versions(data),
             build=self.parse_build_flags(data),
             libs=default_libs,
             progress_categories=self.parse_progress_categories(data),
             progress_report_args=progress_report_args,
+            version_num=version_num,
         )
 
     def load_version(self, version: str, default: MergedConfig) -> MergedConfig:
@@ -279,6 +290,7 @@ class ConfigLoader:
             build=merged_build,
             libs=merged_libs,
             progress_categories=merged_progress,
+            version_num=default.version_num,
         )
 
 

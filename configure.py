@@ -183,7 +183,7 @@ config.ninja_path = args.ninja
 
 # Version
 config.version = version
-version_num = 0  # TODO: load from version config if needed
+version_num = toml_config.version_num
 
 # Build settings
 config.build_dir = args.build_dir
@@ -253,6 +253,8 @@ for lib in toml_config.libs:
         lib_cflags = cflags_runtime
     elif lib.cflags_preset == "rel":
         lib_cflags = cflags_rel
+    elif lib.cflags_preset == "game":
+        lib_cflags = cflags_base + lib.cflags_extra
     else:
         lib_cflags = cflags_base + lib.cflags_extra
 
@@ -274,7 +276,33 @@ for lib in toml_config.libs:
         else:
             obj_completed = False
 
-        objects.append(Object(obj_completed, obj.name))
+        obj_options: Dict[str, Any] = {}
+        if obj.add_to_all is not None:
+            obj_options["add_to_all"] = obj.add_to_all
+        if obj.cflags is not None:
+            obj_options["cflags"] = subst(obj.cflags)
+        if obj.asflags is not None:
+            obj_options["asflags"] = subst(obj.asflags)
+        if obj.mw_version is not None:
+            obj_options["mw_version"] = obj.mw_version
+        if obj.progress_category is not None:
+            obj_options["progress_category"] = obj.progress_category
+        if obj.scratch_preset_id is not None:
+            obj_options["scratch_preset_id"] = obj.scratch_preset_id
+        if obj.shift_jis is not None:
+            obj_options["shift_jis"] = obj.shift_jis
+        if obj.source is not None:
+            obj_options["source"] = obj.source
+        if obj.src_dir is not None:
+            obj_options["src_dir"] = obj.src_dir
+        if obj.extra_cflags is not None:
+            obj_options["extra_cflags"] = subst(obj.extra_cflags)
+        if obj.extra_asflags is not None:
+            obj_options["extra_asflags"] = subst(obj.extra_asflags)
+        if obj.extra_clang_flags is not None:
+            obj_options["extra_clang_flags"] = obj.extra_clang_flags
+
+        objects.append(Object(obj_completed, obj.name, **obj_options))
 
     lib_config: Dict[str, Any] = {
         "lib": lib.name,
