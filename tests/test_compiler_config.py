@@ -1,0 +1,145 @@
+"""Native configuration and source-link regressions, using only the standard library."""
+
+import json
+import shlex
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class CompilerConfigurationTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.workspace = Path(self.directory.name)
+        shutil.copy2(ROOT / "configure.py", self.workspace)
+        shutil.copytree(ROOT / "tools", self.workspace / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+        self.config = self.workspace / "config"
+        (self.config / "GAME01").mkdir(parents=True)
+        (self.config / "GAME01/config.yml").write_text("", encoding="utf-8")
+        (self.config / "default.toml").write_text('''[project]
+default_version = "GAME01"
+version_num = 7
+[tools]
+compilers_tag = "installed"
+wibo_tag = "installed"
+sjiswrap_tag = "installed"
+compilers_path = "custom/compilers"
+sjiswrap_path = "custom/sjiswrap.exe"
+[build]
+linker_version = "GC/1.2.5"
+cflags_base = ['-i "include path"', '-ir recursive', '-DNUM=$VERSION_NUM', '-DVERSION=$VERSION']
+cflags_release = ["-DNDEBUG"]
+cflags_debug = ["-DDEBUG"]
+cflags_warn_all = ["-Wall"]
+cflags_runtime = ["-DRUNTIME"]
+ldflags_debug = ["-g"]
+ldflags_map = ["-mapunused"]
+[progress.categories]
+game = "Game"
+''', encoding="utf-8")
+        self.libs = self.config / "GAME01/libs.toml"
+        self.libs.write_text('''[[lib]]
+name = "main"
+mw_version = "GC/1.2.5"
+cflags_preset = "runtime"
+cflags_extra = ["-DLIB"]
+[[lib.object]]
+name = "original.cpp"
+mw_version = "GC/2.7"
+extra_cflags = ["-inline deferred"]
+shift_jis = true
+''', encoding="utf-8")
+
+    def run_configure(self, *args):
+        result = subprocess.run(
+            [sys.executable, "configure.py", *args], cwd=self.workspace,
+            capture_output=True, text=True, check=False,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        return result.stdout
+
+    def query(self, *args):
+        return json.loads(self.run_configure(
+            "compiler-config", "--version", "GAME01", "--library", "main",
+            "--object", "new.c", "--fallback-object", "original", *args,
+        ))
+
+    def test_effective_flags_paths_and_temporary_overrides(self):
+        before = self.libs.read_bytes()
+        result = self.query()
+        self.assertEqual(result["mw_version"], "GC/2.7")
+        self.assertEqual(result["cflags"], [
+            '-i "include path"', '-ir recursive', '-DNUM=7', '-DVERSION=GAME01',
+            '-DNDEBUG', '-DRUNTIME', '-DLIB',
+        ])
+        self.assertEqual(result["extra_cflags"], ["-lang=c", "-inline deferred"])
+        self.assertIn(str(self.workspace / "custom/compilers/GC/2.7/mwcceppc.exe"), result["command"])
+        self.assertIn(str(self.workspace / "custom/sjiswrap.exe"), result["command"])
+        self.assertIn(str(self.workspace / "recursive"), result["command"])
+        override = self.query("--compiler-options", json.dumps({
+            "mw_version": "GC/2.6", "cflags": ["-O0"], "extra_cflags": [], "shift_jis": False,
+        }), "--compilers", "cli/compilers")
+        self.assertEqual(override["cflags"], ["-O0"])
+        self.assertIn(str(self.workspace / "cli/compilers/GC/2.6/mwcceppc.exe"), override["command"])
+        self.assertEqual(override["object_options"], result["object_options"])
+        self.assertEqual(before, self.libs.read_bytes())
+        self.assertFalse((self.workspace / "build.ninja").exists())
+        debug = self.query("--debug", "--warn", "all")
+        self.assertIn("-DDEBUG", debug["cflags"])
+        self.assertIn("-Wall", debug["cflags"])
+        self.assertNotIn("-DNDEBUG", debug["cflags"])
+
+    def test_saved_options_match_query_and_link_compiled_source(self):
+        before = self.query()
+        source_name = "src/decomp/new.c"
+        source = self.workspace / source_name
+        source.parent.mkdir(parents=True)
+        source.write_text("void matched(void) {}\n", encoding="utf-8")
+        with self.libs.open("a", encoding="utf-8") as output:
+            output.write('\n[[lib.object]]\nname = "src/decomp/new.c"\ncompleted = true\nsrc_dir = "."\n')
+            for key, value in before["object_options"].items():
+                output.write(f"{key} = {json.dumps(value)}\n")
+        after = self.query("--object", source_name)
+        self.assertEqual(before["command"], after["command"])
+        build = self.workspace / "build/GAME01"
+        build.mkdir(parents=True)
+        (build / "config.json").write_text(json.dumps({
+            "version": "1.8.0", "name": "main", "module_id": 0,
+            "ldscript": "build/GAME01/ldscript.lcf", "entry": "_start",
+            "units": [{"name": source_name, "object": "build/GAME01/obj/extracted.o", "autogenerated": False}],
+            "modules": [], "links": [],
+        }), encoding="utf-8")
+        for relative in (
+            "custom/compilers/GC/2.7/mwcceppc.exe",
+            "custom/compilers/GC/1.2.5/mwldeppc.exe", "custom/sjiswrap.exe",
+        ):
+            tool = self.workspace / relative
+            tool.parent.mkdir(parents=True, exist_ok=True)
+            tool.touch()
+        self.run_configure("--version", "GAME01", "--map")
+        ninja = (self.workspace / "build.ninja").read_text(encoding="utf-8").replace("$\n", "").replace("\\", "/")
+        link = next(line for line in ninja.splitlines() if line.startswith("build build/GAME01/main.elf") and ": link " in line)
+        self.assertIn("build/GAME01/src/src/decomp/new.o", link)
+        self.assertNotIn("build/GAME01/obj/extracted.o", link)
+        self.assertIn("-mapunused", ninja)
+        native_flags = next(line.strip().removeprefix("cflags = ") for line in ninja.splitlines() if line.strip().startswith("cflags = "))
+        self.assertEqual(shlex.split(native_flags), shlex.split(" ".join(after["cflags"] + after["extra_cflags"])))
+
+    def test_rel_preset_keeps_library_extras_and_flag_substitution(self):
+        self.libs.write_text(self.libs.read_text().replace('"runtime"', '"rel"'), encoding="utf-8")
+        result = self.query()
+        self.assertIn("-DLIB", result["cflags"])
+        self.assertIn("-DNUM=7", result["cflags"])
+
+
+if __name__ == "__main__":
+    unittest.main()

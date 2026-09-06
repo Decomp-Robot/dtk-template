@@ -1,7 +1,7 @@
 """Configuration loader for TOML config files."""
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -272,7 +272,8 @@ class ConfigLoader:
                 merged_libs.append(lib)
 
         # Merge build flags: default + version-specific extras
-        merged_build = BuildFlags(
+        merged_build = replace(
+            default.build,
             linker_version=default.build.linker_version,
             asflags=default.build.asflags.copy(),
             ldflags=default.build.ldflags + version_flags.ldflags_extra,
