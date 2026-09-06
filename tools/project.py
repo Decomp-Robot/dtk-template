@@ -78,14 +78,6 @@ class Object:
         self.asm_obj_path: Optional[Path] = None
         self.ctx_path: Optional[Path] = None
 
-    def compile_flags(self) -> List[str]:
-        cflags = self.options["cflags"]
-        extra_cflags = self.options["extra_cflags"]
-        if not any(flag.startswith("-lang") for flag in cflags + extra_cflags):
-            extra_cflags = self.options["extra_cflags"] = list(extra_cflags)
-            extra_cflags.insert(0, "-lang=c++" if file_is_cpp(self.src_path) else "-lang=c")
-        return cflags + extra_cflags
-
     def resolve(self, config: "ProjectConfig", lib: Library) -> "Object":
         # Use object options, then library options
         obj = Object(self.completed, self.name, **lib)
@@ -1012,7 +1004,23 @@ def generate_build_ninja(
                 return obj.src_obj_path
             source_added.add(obj.src_obj_path)
 
-            all_cflags = obj.compile_flags()
+            cflags = obj.options["cflags"]
+            extra_cflags = obj.options["extra_cflags"]
+
+            # Add appropriate language flag if it doesn't exist already
+            # Added directly to the source so it flows to other generation tasks
+            if not any(flag.startswith("-lang") for flag in cflags) and not any(
+                flag.startswith("-lang") for flag in extra_cflags
+            ):
+                # Ensure extra_cflags is a unique instance,
+                # and insert into there to avoid modifying shared sets of flags
+                extra_cflags = obj.options["extra_cflags"] = list(extra_cflags)
+                if file_is_cpp(src_path):
+                    extra_cflags.insert(0, "-lang=c++")
+                else:
+                    extra_cflags.insert(0, "-lang=c")
+
+            all_cflags = cflags + extra_cflags
             cflags_str = make_flags_str(all_cflags)
             used_compiler_versions.add(obj.options["mw_version"])
 

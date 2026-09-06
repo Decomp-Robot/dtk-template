@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tools.config_loader import load_config
-from tools.compiler_config import CompilerOptions, compiler_configuration, tool_path
 from tools.project import (
     Object,
     ProgressCategory,
@@ -58,7 +57,7 @@ DEFAULT_VERSION = get_default_version(CONFIG_DIR) or (AVAILABLE_VERSIONS[0] if A
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "mode",
-    choices=["configure", "progress", "compiler-config"],
+    choices=["configure", "progress"],
     default="configure",
     help="script mode (default: configure)",
     nargs="?",
@@ -155,10 +154,6 @@ parser.add_argument(
     action="store_false",
     help="disable progress calculation",
 )
-parser.add_argument("--library", help="library for compiler-config")
-parser.add_argument("--object", help="object source name for compiler-config")
-parser.add_argument("--fallback-object", help="original object stem when destination is new")
-parser.add_argument("--compiler-options", type=CompilerOptions.from_json)
 args = parser.parse_args()
 
 # Determine version
@@ -179,11 +174,11 @@ config.sjiswrap_tag = toml_config.tools.sjiswrap_tag
 config.wibo_tag = toml_config.tools.wibo_tag
 
 # Command-line tool paths override the project TOML settings
-config.binutils_path = tool_path(args.binutils, toml_config.tools.binutils_path)
-config.compilers_path = tool_path(args.compilers, toml_config.tools.compilers_path)
-config.dtk_path = tool_path(args.dtk, toml_config.tools.dtk_path)
-config.objdiff_path = tool_path(args.objdiff, toml_config.tools.objdiff_path)
-config.sjiswrap_path = tool_path(args.sjiswrap, toml_config.tools.sjiswrap_path)
+config.binutils_path = args.binutils or (Path(toml_config.tools.binutils_path) if toml_config.tools.binutils_path else None)
+config.compilers_path = args.compilers or (Path(toml_config.tools.compilers_path) if toml_config.tools.compilers_path else None)
+config.dtk_path = args.dtk or (Path(toml_config.tools.dtk_path) if toml_config.tools.dtk_path else None)
+config.objdiff_path = args.objdiff or (Path(toml_config.tools.objdiff_path) if toml_config.tools.objdiff_path else None)
+config.sjiswrap_path = args.sjiswrap or (Path(toml_config.tools.sjiswrap_path) if toml_config.tools.sjiswrap_path else None)
 config.ninja_path = args.ninja
 
 # Version
@@ -196,7 +191,7 @@ config.generate_map = args.map
 config.non_matching = args.non_matching
 config.progress = args.progress
 if not is_windows():
-    config.wrapper = tool_path(args.wrapper, toml_config.tools.wrapper_path)
+    config.wrapper = args.wrapper or (Path(toml_config.tools.wrapper_path) if toml_config.tools.wrapper_path else None)
 
 # Don't build asm unless we're --non-matching
 if not config.non_matching:
@@ -339,17 +334,7 @@ config.warn_missing_source = False
 # config.link_order_callback = link_order_callback
 
 # Run in requested mode
-if args.mode == "compiler-config":
-    if not args.library or not args.object:
-        parser.error("compiler-config requires --library and --object")
-    try:
-        result = compiler_configuration(
-            config, args.library, args.object, args.fallback_object, args.compiler_options, subst
-        )
-    except ValueError as error:
-        parser.error(str(error))
-    print(result.to_json())
-elif args.mode == "configure":
+if args.mode == "configure":
     generate_build(config)
 elif args.mode == "progress":
     calculate_progress(config)
