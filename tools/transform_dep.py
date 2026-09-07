@@ -13,6 +13,7 @@
 
 import argparse
 import os
+from pathlib import Path
 from platform import uname
 
 wineprefix = os.path.join(os.environ["HOME"], ".wine")
@@ -55,6 +56,10 @@ def import_d_file(in_file: str) -> str:
                     path = os.path.realpath(
                         os.path.join(winedevices, path.replace("\\", "/"))
                     )
+                try:
+                    path = Path(path).relative_to(Path.cwd()).as_posix()
+                except ValueError:
+                    pass
                 out_text += "\t" + path + suffix + "\n"
 
     return out_text
