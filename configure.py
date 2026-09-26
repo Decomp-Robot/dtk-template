@@ -212,7 +212,7 @@ version_str = version
 version_num_str = str(version_num)
 
 def subst(flags: List[str]) -> List[str]:
-    return [f.replace("$VERSION", version_str).replace("$VERSION_NUM", version_num_str) for f in flags]
+    return [f.replace("$VERSION_NUM", version_num_str).replace("$VERSION", version_str) for f in flags]
 
 # Get base cflags from config
 cflags_base = list(toml_config.build.cflags_base)
@@ -257,6 +257,8 @@ for lib in toml_config.libs:
         lib_cflags = cflags_base + lib.cflags_extra
     else:
         lib_cflags = cflags_base + lib.cflags_extra
+
+    lib_cflags = subst(lib_cflags)
 
     # Filter objects based on version and handle "equivalent" status
     objects = []
