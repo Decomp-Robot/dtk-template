@@ -1,7 +1,7 @@
 """Configuration loader for TOML config files."""
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -19,12 +19,12 @@ from .config_models import (
 class MergedConfig:
     """Merged configuration containing tools, build flags, and library definitions."""
 
-    tools: ToolVersions = field(default_factory=ToolVersions)
-    build: BuildFlags = field(default_factory=BuildFlags)
+    tools: ToolVersions
+    build: BuildFlags
+    version_num: int
     libs: List[LibraryDef] = field(default_factory=list)
     progress_categories: Dict[str, str] = field(default_factory=dict)
     progress_report_args: List[str] = field(default_factory=list)
-    version_num: int = 0
 
 
 class ConfigLoader:
@@ -52,19 +52,16 @@ class ConfigLoader:
         with open(path, "rb") as f:
             return tomllib.load(f)
 
-    def parse_tool_versions(self, data: Optional[dict]) -> ToolVersions:
+    def parse_tool_versions(self, data: dict) -> ToolVersions:
         """Parse tool versions from TOML data.
 
         Args:
-            data: Parsed TOML data dictionary, or None.
+            data: Parsed TOML data dictionary.
 
         Returns:
             ToolVersions instance with loaded data.
         """
-        if data is None:
-            return ToolVersions()
-
-        tools_data = data.get("tools", {})
+        tools_data = data["tools"]
 
         # Path overrides
         binutils_path = tools_data.get("binutils_path")
@@ -75,12 +72,12 @@ class ConfigLoader:
         wrapper_path = tools_data.get("wrapper_path")
 
         return ToolVersions(
-            binutils_tag=tools_data.get("binutils_tag", "2.42-1"),
-            compilers_tag=tools_data.get("compilers_tag", "20251118"),
-            dtk_tag=tools_data.get("dtk_tag", "v1.8.0"),
-            objdiff_tag=tools_data.get("objdiff_tag", "v3.5.1"),
-            sjiswrap_tag=tools_data.get("sjiswrap_tag"),
-            wibo_tag=tools_data.get("wibo_tag"),
+            binutils_tag=tools_data["binutils_tag"],
+            compilers_tag=tools_data["compilers_tag"],
+            dtk_tag=tools_data["dtk_tag"],
+            objdiff_tag=tools_data["objdiff_tag"],
+            sjiswrap_tag=tools_data["sjiswrap_tag"],
+            wibo_tag=tools_data["wibo_tag"],
             binutils_path=binutils_path,
             compilers_path=compilers_path,
             dtk_path=dtk_path,
@@ -89,22 +86,19 @@ class ConfigLoader:
             wrapper_path=wrapper_path,
         )
 
-    def parse_build_flags(self, data: Optional[dict]) -> BuildFlags:
+    def parse_build_flags(self, data: dict) -> BuildFlags:
         """Parse build flags from TOML data.
 
         Args:
-            data: Parsed TOML data dictionary, or None.
+            data: Parsed TOML data dictionary.
 
         Returns:
             BuildFlags instance with loaded data.
         """
-        if data is None:
-            return BuildFlags()
-
-        build_data = data.get("build", {})
+        build_data = data["build"]
 
         return BuildFlags(
-            linker_version=build_data.get("linker_version", "GC/1.2.5n"),
+            linker_version=build_data["linker_version"],
             asflags=build_data.get("asflags", []),
             ldflags=build_data.get("ldflags", []),
             cflags_base=build_data.get("cflags_base", []),
@@ -196,6 +190,8 @@ class ConfigLoader:
         """
         default_path = self.config_dir / "default.toml"
         data = self.load_toml(default_path)
+        if data is None:
+            raise FileNotFoundError(default_path)
 
         # Also load default libraries from config/libs.toml
         libs_path = self.config_dir / "libs.toml"
@@ -207,17 +203,17 @@ class ConfigLoader:
         progress_report_args = progress_data.get("progress_report_args", [])
 
         # Parse version_num from [project] section
-        project_data = data.get("project", {})
-        version_num = project_data.get("version_num", 0)
-
-        return MergedConfig(
-            tools=self.parse_tool_versions(data),
-            build=self.parse_build_flags(data),
-            libs=default_libs,
-            progress_categories=self.parse_progress_categories(data),
-            progress_report_args=progress_report_args,
-            version_num=version_num,
-        )
+        try:
+            return MergedConfig(
+                tools=self.parse_tool_versions(data),
+                build=self.parse_build_flags(data),
+                libs=default_libs,
+                progress_categories=self.parse_progress_categories(data),
+                progress_report_args=progress_report_args,
+                version_num=data["project"]["version_num"],
+            )
+        except KeyError as exc:
+            raise ValueError(f"{default_path}: missing required TOML value {exc}") from exc
 
     def load_version(self, version: str, default: MergedConfig) -> MergedConfig:
         """Load version-specific configuration and merge with defaults.
@@ -272,8 +268,8 @@ class ConfigLoader:
                 merged_libs.append(lib)
 
         # Merge build flags: default + version-specific extras
-        merged_build = BuildFlags(
-            linker_version=default.build.linker_version,
+        merged_build = replace(
+            default.build,
             asflags=default.build.asflags.copy(),
             ldflags=default.build.ldflags + version_flags.ldflags_extra,
             cflags_base=default.build.cflags_base.copy(),
@@ -290,6 +286,7 @@ class ConfigLoader:
             build=merged_build,
             libs=merged_libs,
             progress_categories=merged_progress,
+            progress_report_args=default.progress_report_args,
             version_num=default.version_num,
         )
 

@@ -14,7 +14,7 @@ import argparse
 import sys
 import tomllib
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from tools.config_loader import load_config
 from tools.project import (
@@ -38,20 +38,24 @@ def get_available_versions(config_dir: Path) -> List[str]:
     return sorted(versions)
 
 
-def get_default_version(config_dir: Path) -> Optional[str]:
+def get_default_version(config_dir: Path) -> str:
     """Load default version from config/default.toml."""
     default_path = config_dir / "default.toml"
-    if default_path.exists():
-        with open(default_path, "rb") as f:
-            data = tomllib.load(f)
-            return data.get("project", {}).get("default_version")
-    return None
+    with open(default_path, "rb") as f:
+        try:
+            return tomllib.load(f)["project"]["default_version"]
+        except KeyError as exc:
+            raise ValueError(f"{default_path}: missing [project].default_version") from exc
+
+
+def tool_path(cli_path: Path | None, configured_path: str | None) -> Path | None:
+    return cli_path or (Path(configured_path) if configured_path else None)
 
 
 # Discover available versions from config directory
 CONFIG_DIR = Path("config")
 AVAILABLE_VERSIONS = get_available_versions(CONFIG_DIR)
-DEFAULT_VERSION = get_default_version(CONFIG_DIR) or (AVAILABLE_VERSIONS[0] if AVAILABLE_VERSIONS else "GAMEID")
+DEFAULT_VERSION = get_default_version(CONFIG_DIR)
 
 # Parse command line arguments
 parser = argparse.ArgumentParser()
@@ -173,12 +177,12 @@ config.objdiff_tag = toml_config.tools.objdiff_tag
 config.sjiswrap_tag = toml_config.tools.sjiswrap_tag
 config.wibo_tag = toml_config.tools.wibo_tag
 
-# Apply custom tool paths from args
-config.binutils_path = args.binutils
-config.compilers_path = args.compilers
-config.dtk_path = args.dtk
-config.objdiff_path = args.objdiff
-config.sjiswrap_path = args.sjiswrap
+# Command-line tool paths override the project TOML settings
+config.binutils_path = tool_path(args.binutils, toml_config.tools.binutils_path)
+config.compilers_path = tool_path(args.compilers, toml_config.tools.compilers_path)
+config.dtk_path = tool_path(args.dtk, toml_config.tools.dtk_path)
+config.objdiff_path = tool_path(args.objdiff, toml_config.tools.objdiff_path)
+config.sjiswrap_path = tool_path(args.sjiswrap, toml_config.tools.sjiswrap_path)
 config.ninja_path = args.ninja
 
 # Version
@@ -191,7 +195,7 @@ config.generate_map = args.map
 config.non_matching = args.non_matching
 config.progress = args.progress
 if not is_windows():
-    config.wrapper = args.wrapper
+    config.wrapper = tool_path(args.wrapper, toml_config.tools.wrapper_path)
 
 # Don't build asm unless we're --non-matching
 if not config.non_matching:

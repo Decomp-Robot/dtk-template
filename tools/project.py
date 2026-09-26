@@ -284,7 +284,7 @@ class ProjectConfig:
     # Determines whether or not to use wibo as the compiler wrapper.
     def use_wibo(self) -> bool:
         return (
-            self.wibo_tag is not None
+            bool(self.wibo_tag)
             and (sys.platform == "linux" or sys.platform == "darwin")
             and platform.machine() in ("i386", "x86_64", "aarch64", "arm64")
             and self.wrapper is None
@@ -413,8 +413,7 @@ def load_build_config(
         os.remove(build_config_path)
         return None
 
-    dtk_version = str(config.dtk_tag)[1:]  # Strip v
-    if versiontuple(config_version) < versiontuple(dtk_version):
+    if config.dtk_tag and versiontuple(config_version) < versiontuple(config.dtk_tag[1:]):
         print("Outdated config.json, regenerating...")
         f.close()
         os.remove(build_config_path)
@@ -655,7 +654,7 @@ def generate_build_ninja(
     n.build(
         outputs="tools",
         rule="phony",
-        inputs=[dtk, sjiswrap, wrapper, compilers, binutils, objdiff],
+        inputs=[dtk, sjiswrap, wrapper_implicit, compilers, binutils, objdiff],
     )
     n.newline()
 
