@@ -25,12 +25,12 @@ default_version = "GAMEID"
 version_num = 0  # Numeric version for $VERSION_NUM substitution
 
 [tools]
-binutils_tag = "2.42-1"
+binutils_tag = "2.42-2"
 compilers_tag = "20251118"
-dtk_tag = "v1.8.0"
-objdiff_tag = "v3.5.1"
+dtk_tag = "v1.8.3"
+objdiff_tag = "v3.6.1"
 sjiswrap_tag = "v1.2.2"
-wibo_tag = "1.0.0"
+wibo_tag = "1.0.3"
 
 [build]
 linker_version = "GC/1.3.2"
@@ -58,14 +58,21 @@ cflags_warn_error = [...]
 # Linker flags
 ldflags = [...]
 
+# objdiff report args
+[progress]
+progress_report_args = []
+
 # Progress categories
 [progress.categories]
 game = "Game Code"
 sdk = "SDK Code"
-
-# objdiff report args
-progress_report_args = []
 ```
+
+The default version, numeric version, tool tags, and linker version must be set
+in `config/default.toml`. To use a custom tool path instead of downloading a
+release, set its tag to `""` and its path (for example, `dtk_path`) in `[tools]`.
+`wrapper_path` selects a custom Wibo/Wine executable; CLI paths take precedence.
+On Linux/macOS, an empty `wibo_tag` without a wrapper selects system Wine.
 
 ## libs.toml
 

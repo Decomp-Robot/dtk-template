@@ -6,12 +6,12 @@ from typing import Dict, List, Optional
 class ToolVersions:
     """Tool version configuration for decompilation project."""
 
-    binutils_tag: str = "2.42-1"
-    compilers_tag: str = "20251118"
-    dtk_tag: str = "v1.8.0"
-    objdiff_tag: str = "v3.5.1"
-    sjiswrap_tag: Optional[str] = None
-    wibo_tag: Optional[str] = None
+    binutils_tag: str
+    compilers_tag: str
+    dtk_tag: str
+    objdiff_tag: str
+    sjiswrap_tag: str
+    wibo_tag: str
 
     # Optional path overrides (if None, tools will be downloaded automatically)
     binutils_path: Optional[str] = None
@@ -26,7 +26,7 @@ class ToolVersions:
 class BuildFlags:
     """Compiler and linker flags configuration."""
 
-    linker_version: str = "GC/1.2.5n"
+    linker_version: str
 
     # Assembler and linker flags
     asflags: List[str] = field(default_factory=list)
@@ -124,8 +124,8 @@ class VersionConfig:
 class Config:
     """Root configuration container."""
 
-    tools: ToolVersions = field(default_factory=ToolVersions)
-    build_flags: BuildFlags = field(default_factory=BuildFlags)
+    tools: ToolVersions
+    build_flags: BuildFlags
+    default_version: str
     libraries: List[LibraryDef] = field(default_factory=list)
     versions: List[VersionConfig] = field(default_factory=list)
-    default_version: str = ""
