@@ -41,6 +41,8 @@ class ConfigLoaderTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        self.native_windows = sys.platform == "win32"
+        self.wrapper_args = [] if self.native_windows else ["--wrapper", "cli-wrapper"]
         self.config_dir = self.root / "config"
         (self.config_dir / "GAMEID").mkdir(parents=True)
         (self.config_dir / "GAMEID" / "config.yml").touch()
@@ -111,23 +113,23 @@ class ConfigLoaderTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         ninja = (self.root / "build.ninja").read_text(encoding="utf-8")
-        self.assertIn("custom-wrapper", ninja)
+        self.assertEqual("custom-wrapper" in ninja, not self.native_windows)
         self.assertIn("custom-dtk", ninja)
         self.assertNotIn("build/tools/wibo", ninja)
 
         (self.root / "cli-dtk").touch()
         result = subprocess.run(
-            [sys.executable, str(script), "--dtk", "cli-dtk", "--wrapper", "cli-wrapper"],
+            [sys.executable, str(script), "--dtk", "cli-dtk", *self.wrapper_args],
             cwd=self.root, capture_output=True, text=True, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         ninja = (self.root / "build.ninja").read_text(encoding="utf-8")
-        self.assertIn("cli-wrapper", ninja)
+        self.assertEqual("cli-wrapper" in ninja, not self.native_windows)
         self.assertIn("cli-dtk", ninja)
         self.assertNotIn("custom-wrapper", ninja)
         self.assertNotIn("custom-dtk", ninja)
 
-    def test_empty_wibo_tag_uses_wine(self):
+    def test_empty_wibo_tag_does_not_create_download_dependency(self):
         self.default.write_text(TOML.replace('wibo_tag = "wibo-test"', 'wibo_tag = ""'),
                                 encoding="utf-8")
 
@@ -138,9 +140,20 @@ class ConfigLoaderTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         ninja = (self.root / "build.ninja").read_text(encoding="utf-8")
         self.assertNotIn("build/tools/wibo", ninja)
-        self.assertIn("wine", ninja)
+        self.assertEqual("wine" in ninja, not self.native_windows)
         tools_target = next(line for line in ninja.splitlines() if line.startswith("build tools:"))
         self.assertNotIn(" wine ", f" {tools_target} ")
+
+    def test_configure_script_can_be_outside_build_directory(self):
+        script = Path(__file__).resolve().parents[1] / "configure.py"
+
+        result = subprocess.run(
+            [sys.executable, str(script)], cwd=self.root,
+            capture_output=True, text=True, check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "build.ninja").is_file())
 
     def test_custom_dtk_path_with_empty_tag_accepts_generated_config(self):
         path = self.root / "config.json"

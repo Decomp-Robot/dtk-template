@@ -451,6 +451,11 @@ def generate_build(config: ProjectConfig) -> None:
     generate_compile_commands(config, objects, build_config)
 
 
+def _relative_path(path: str | Path) -> Path:
+    path = Path(path).absolute()
+    return Path(os.path.relpath(path)) if path.drive.casefold() == Path.cwd().drive.casefold() else path
+
+
 # Generate build.ninja
 def generate_build_ninja(
     config: ProjectConfig,
@@ -462,8 +467,8 @@ def generate_build_ninja(
     n.variable("ninja_required_version", "1.3")
     n.newline()
 
-    configure_script = Path(os.path.relpath(os.path.abspath(sys.argv[0])))
-    python_lib = Path(os.path.relpath(__file__))
+    configure_script = _relative_path(sys.argv[0])
+    python_lib = _relative_path(__file__)
     python_lib_dir = python_lib.parent
     n.comment("The arguments passed to configure.py, for rerunning it.")
     n.variable("configure_args", sys.argv[1:])
